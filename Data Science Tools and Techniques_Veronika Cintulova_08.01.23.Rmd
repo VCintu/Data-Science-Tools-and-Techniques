@@ -1,0 +1,334 @@
+---
+title: "Data Science Tools and Techniques"
+author: "Veronika Cintulova"
+date: "2023-01-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries used:
+
+```{r}
+library('tidyverse')
+library('dplyr')
+library('psych')
+library('purrr')
+library('mice')
+library('texreg')
+library('ggplot2')
+```
+
+## Data preparation
+
+Making a copy out of the original dataset and deleting missing values
+
+```{r}
+DF <- Life_Expectancy_Data
+DFs <- DF
+DFs <- na.omit(DFs)
+```
+
+Creating a new, joined dataset, which consist out of the original dataset and additional dataset with missing values
+
+```{r}
+joined <- merge(DF, World_bank, by= c("Country", "Year"),all.x = TRUE, all.y = TRUE)
+DF1 <- unite(joined,"Population", Population.x,Population.y, na.rm = TRUE, remove = TRUE )
+DF1 <- unite(DF1, "GDP", GDP.x, GDP.y, na.rm = TRUE, remove= TRUE)
+DF2 <- DF1
+DF2 <- na.omit(DF2)
+```
+
+Creating a new dataset where the character values are deleted = it is easier for models, correlation matrix and they are not needed
+
+```{r}
+DF3 <- select(DF2, -"Country", -"Status")
+DF3 <- lapply(DF3,as.numeric)
+DF4 <- na.omit (DF3)
+```
+
+Creating a correlation matrix
+
+```{r}
+describe(DF2)  
+DF4 <- char2numeric(DF2)  
+fa(DF4, nfactors=3) 
+cor(DF4)
+```
+
+### Data preparation for Question 3
+
+Creating a new dataset with life expectancy lower than 65
+
+```{r}
+Dfm <- DF4
+Dfv <- Dfm %>% filter(Life_expectancy <65)
+```
+
+Deleting char. variables (county, year), and also year, population and GDP as they are not relevant
+
+```{r}
+Dfv <- select(Dfv, - c(1:3, 17:18))
+```
+
+```{r}
+cor(Dfv)
+```
+
+### Data preparation for Question 8
+
+Creating a new dataset with only densely populated countries
+
+```{r}
+Dfc <- DF2
+Dfk <- filter(Dfc, Country %in%  c("Monaco", "Singapore","Hong Kong","Gibraltar","Bahrain","Maldives","Malta","Bermuda","Bangladesh", "China"))
+```
+
+Creating a new dataset without the densely populated countries
+
+```{r}
+DFa <-DF2
+filter(DFa, !Country %in% c("Monaco", "Singapore","Hong Kong","Gibraltar","Bahrain","Maldives","Malta","Bermuda","Bangladesh", "China"))
+```
+
+## Modeling
+
+### Question 1 and 2
+
+Creating the first two models to see which variables and how affect the life expectancy.
+
+```{r}
+
+model1Posit <-lm(scale(Life_expectancy)~scale(Alcohol)+scale(percentage_expenditure)+scale(Hepatitis_B)+scale(BMI)+scale(Polio)+scale(Total_expenditure)+scale(Diphtheria)+scale(Population)+scale(Income_composition_of_resources)+scale(Schooling), data=DF3)
+summary(model1Posit)
+
+model1Negat <-lm(scale(Life_expectancy)~scale(Adult_Mortality)+scale(infant_deaths)+scale(Measles)+scale(under.five_deaths)+scale(HIV.AIDS)+scale(GDP)+scale(thinness._1.19_years), data=DF3)
+summary(model1Negat)
+```
+
+Creating a table out of the first model
+
+```{r}
+screenreg(list(model1Posit, model1Negat),
+          custom.model.names = c("Values with Positive, and ","Negative correlation"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+### Question 3
+
+Creating a model to see how immunization would help Life expectancy when lower than 65
+
+```{r}
+model3 <- lm(scale(Life_expectancy)~scale(Hepatitis_B)+scale(Diphtheria)+scale(Polio), data = Dfv)
+summary(model3)
+screenreg(list(model3),
+          custom.model.names = c("Model 3"),
+          custom.coef.names = c("Intercept", "Hepatitis_B","Diphtheria","Polio"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+Creating three models (H,D,P) to see how immunization would help Life expectancy when lower than 65
+
+```{r}
+modelH <- lm(scale(Life_expectancy)~scale(Hepatitis_B), data = Dfv)
+summary(modelH)
+screenreg(list(modelH),
+          custom.model.names = c("Hepatitis B"),
+          custom.coef.names = c("Intercept", "Hepatitis_B"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+
+modelD <- lm(scale(Life_expectancy)~+scale(Diphtheria), data = Dfv)
+summary(modelD)
+screenreg(list(modelD),
+          custom.model.names = c("Diphtheria"),
+          custom.coef.names = c("Intercept", "Diphtheria"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+
+modelP <- lm(scale(Life_expectancy)~+scale(Polio), data = Dfv)
+summary(modelP)
+screenreg(list(modelP),
+          custom.model.names = c("Polio"),
+          custom.coef.names = c("Intercept", "Polio"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+```{r}
+ggplot(Dfv, aes(x = Hepatitis_B, y = Life_expectancy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+
+ggplot(Dfv, aes(x = Diphtheria, y = Life_expectancy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+
+ggplot(Dfv, aes(x = Polio, y = Life_expectancy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+```
+
+Creating a model to see how diseases and other health related variables are affecting the Life expectancy when lower than 65
+
+```{r}
+model4 <- lm(scale(Life_expectancy)~scale(Measles)+scale(BMI)+scale(HIV.AIDS), data = Dfv)
+summary(model4)
+screenreg(list(model4),
+          custom.model.names = c("Diseases"),
+          custom.coef.names = c("Intercept", "Measles","BMI","HIV.AIDS"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+### Question 4
+
+Creating a model to see how adult mortality affects the life expectancy
+
+```{r}
+model5 <- lm(scale(Life_expectancy)~scale(Adult_Mortality), data = DF3)
+summary(model5)
+screenreg(list(model5),
+          custom.model.names = c("Adult Mortality"),
+          custom.coef.names = c("Intercept", "Adult_Mortality"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+Ploting a scatterplot with a regression line
+
+```{r}
+
+ggplot(DF2, aes(x = Adult_Mortality, y = Life_expectancy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+```
+
+### Question 5
+
+Creating a model to see how alcohol and BMI (bad lifestyle) affect the life expectancy
+
+```{r}
+model6 <- lm(scale(Life_expectancy)~scale(Alcohol)+scale(BMI), data = DF3)
+summary(model6)
+screenreg(list(model6),
+          custom.model.names = c("Alcohol and BMI"),
+          custom.coef.names = c("Intercept", "Alcohol", "BMI"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+### Question 6
+
+Creating a model to see how schooling affects the life expectancy
+
+```{r}
+model7 <- lm(scale(Life_expectancy)~scale(Schooling), data = DF3)
+summary(model7)
+screenreg(list(model7),
+          custom.model.names = c("Schooling"),
+          custom.coef.names = c("Intercept", "Schooling"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+Ploting of scatter plot with a regression line
+
+```{r}
+ggplot(DF2, aes(x = Schooling, y = Life_expectancy)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+```
+
+### Question 7
+
+Creating a model to see how alcohol affects the life expectancy
+
+```{r}
+model8 <- lm(scale(Life_expectancy)~scale(Alcohol), data = DF3)
+summary(model8)
+screenreg(list(model8),
+          custom.model.names = c("Alcohol"),
+          custom.coef.names = c("Intercept", "Alcohol"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+### Question 8
+
+Computing mean of life expectancy in densely populated countries
+
+```{r}
+mean(Dfk$Life_expectancy)
+```
+
+Computing mean of life expectancy in non-densely populated countries
+
+```{r}
+mean(DFa$Life_expectancy)
+```
+
+Additional data preparation part for visualization
+
+```{r}
+DFmean <- data.frame(Country=c("Densley Countries", "Non-densley Countries"),
+                Life_Expectancy=c(76.28, 69.99))
+head(df)
+
+```
+
+Creating bar graph
+
+```{r}
+ggplot(data=DFmean, aes(x=Country, y=Life_Expectancy)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Life_Expectancy), vjust=1.6, color="white", size=3.5)+
+  theme_minimal()
+
+```
+
+### Question 9
+
+Creating a model to see how immunization affects life expectancy
+
+```{r}
+model9 <- lm(scale(Life_expectancy)~scale(Hepatitis_B)+scale(Diphtheria)+scale(Polio), data = DF3)
+summary(model9)
+screenreg(list(model9),
+          custom.model.names = c("Model 9"),
+          custom.coef.names = c("Intercept", "Hepatitis_B","Diphtheria","Polio"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
+
+Creating three models (He,Di,Po) to see how immunization would help Life expectancy
+
+```{r}
+modelHe <- lm(scale(Life_expectancy)~scale(Hepatitis_B), data = DF3)
+summary(modelHe)
+screenreg(list(modelHe),
+          custom.model.names = c("Hepatitis B"),
+          custom.coef.names = c("Intercept", "Hepatitis_B"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+
+modelDi <- lm(scale(Life_expectancy)~+scale(Diphtheria), data = DF3)
+summary(modelDi)
+screenreg(list(modelDi),
+          custom.model.names = c("Diphtheria"),
+          custom.coef.names = c("Intercept", "Diphtheria"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+
+modelPo <- lm(scale(Life_expectancy)~+scale(Polio), data = DF3)
+summary(modelPo)
+screenreg(list(modelPo),
+          custom.model.names = c("Polio"),
+          custom.coef.names = c("Intercept", "Polio"),
+          digits = 6,
+          custom.gof.names = c("R-squared","Adjusted R-Squared","Number of Observations"))
+```
